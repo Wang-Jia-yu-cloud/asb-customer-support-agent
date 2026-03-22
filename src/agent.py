@@ -18,87 +18,115 @@ ASB_CONTACT = """
 - Online: asb.co.nz/contact-us
 """
 
-SYSTEM_PROMPT = """You are Kiri, a friendly senior virtual support specialist at ASB Bank New Zealand.
-
-Rules:
-- Talk like a real person: warm, direct, clear
-- ALWAYS start with a brief natural greeting like "Hi there!" or "Hey!"
-- Use contractions: you're, it's, here's, don't
-- Number steps clearly when giving instructions
-- Do NOT include any URLs or links
-- Do NOT sign off with your name — this is chat not email
-- Do NOT use corporate filler like "Certainly!", "I hope this helps", "Don't hesitate to reach out"
-- End naturally when the answer is complete
-- If you don't know, say so honestly and give ASB contact details"""
-
-
-def classify_query(message: str) -> str:
-    msg = message.lower()
-    escalate_keywords = ["speak to", "talk to", "real person", "human", "call me", "agent"]
-    complaint_keywords = ["failed", "missing", "gone", "blocked", "fraud", "scam", "wrong", "error", "stolen"]
-
-    for kw in escalate_keywords:
-        if kw in msg:
-            return "escalate"
-    for kw in complaint_keywords:
-        if kw in msg:
-            return "complaint"
-    return "faq"
-
 
 @lru_cache(maxsize=256)
 def get_embedding(text: str) -> tuple:
     response = client.embeddings.create(
         input=text,
-        model="text-embedding-3-small",
+        model="text-embedding-ada-002",
     )
     return tuple(response.data[0].embedding)
 
 
-def search_knowledge_base(query: str, top_k: int = 5) -> str:
+def search(query: str, top_k: int = 5) -> list:
     vector = list(get_embedding(query))
     results = index.query(vector=vector, top_k=top_k, include_metadata=True)
-    if not results.matches:
-        return "No relevant information found."
-    output = ""
-    for m in results.matches:
-        output += f"Q: {m.metadata['question']}\nA: {m.metadata['answer']}\n\n"
-    return output.strip()
+    return [
+        {
+            "question": m.metadata["question"],
+            "answer": m.metadata["answer"],
+        }
+        for m in results.matches
+    ]
 
 
-def run_crew(user_message: str) -> str:
-    category = classify_query(user_message)
+def rewrite_query(user_message: str) -> str:
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": "Rewrite the user's question into a clear and specific banking search query. Output only the rewritten query, nothing else."
+            },
+            {
+                "role": "user",
+                "content": user_message
+            }
+        ]
+    )
+    return response.choices[0].message.content.strip()
 
-    if category == "escalate":
-        context = ""
-        user_prompt = (
-            f"The customer wants to speak to a real person.\n\n"
-            f"Acknowledge this warmly and give them these contact options:\n{ASB_CONTACT}"
-        )
-    elif category == "complaint":
-        context = search_knowledge_base(user_message)
-        user_prompt = (
-            f"Customer concern: {user_message}\n\n"
-            f"Relevant information from knowledge base:\n{context}\n\n"
-            f"Acknowledge their concern, give any relevant self-help steps, "
-            f"then provide ASB contact details:\n{ASB_CONTACT}"
-        )
+
+def classify(message: str) -> str:
+    msg = message.lower()
+    if any(x in msg for x in ["human", "person", "call", "speak", "real", "someone"]):
+        return "escalate"
+    if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen"]):
+        return "complaint"
+    if any(x in msg for x in ["loan", "credit", "kiwisaver", "mortgage", "insurance"]):
+        return "product"
+    return "faq"
+
+
+def run_crew(user_message: str, chat_history=None) -> str:
+    improved_query = rewrite_query(user_message)
+
+    docs = search(improved_query, top_k=5)
+
+    if docs:
+        best = docs[0]
+        context = f"Q: {best['question']}\nA: {best['answer']}"
     else:
-        context = search_knowledge_base(user_message)
-        user_prompt = (
-            f"Customer question: {user_message}\n\n"
-            f"Relevant information from knowledge base:\n{context}\n\n"
-            f"Answer the question clearly and completely based on the information above."
+        context = "No relevant information found."
+
+    category = classify(user_message)
+
+    if category in ["complaint", "escalate"]:
+        return (
+            "Hi there! I can see something's not quite right.\n\n"
+            "Here's what you can try:\n"
+            "1. Check your internet banking or mobile app\n"
+            "2. Restart the app and try again\n\n"
+            "If the issue continues, contact ASB directly:\n"
+            f"{ASB_CONTACT}"
         )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are Kiri, a friendly senior customer support specialist at ASB Bank New Zealand.\n"
+                "Rules:\n"
+                "- ALWAYS start with a brief natural greeting like 'Hi there!' or 'Hey!'\n"
+                "- Talk like a real person: warm, direct, clear\n"
+                "- Use contractions: you're, it's, here's, don't\n"
+                "- Number steps clearly when giving instructions\n"
+                "- Do NOT include any URLs or links\n"
+                "- Do NOT sign off with your name — this is chat not email\n"
+                "- Never use corporate filler like 'Certainly!', 'I hope this helps'\n"
+                "- ONLY use the knowledge provided below — do not make things up\n"
+                "- If unsure, say so honestly and suggest contacting ASB directly\n\n"
+                f"Knowledge:\n{context}"
+            )
+        }
+    ]
+
+    if chat_history:
+        for msg in chat_history[-6:]:
+            if msg["role"] in ["user", "assistant"]:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
+
+    messages.append({"role": "user", "content": user_message})
 
     response = client.chat.completions.create(
         model=os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini"),
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.5,
-        max_tokens=800,
+        temperature=0.3,
+        messages=messages,
+        max_tokens=600,
     )
 
     return response.choices[0].message.content.strip()
