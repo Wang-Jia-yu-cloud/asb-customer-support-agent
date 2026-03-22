@@ -269,7 +269,8 @@ if st.session_state.pending:
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(user_bubble(prompt), unsafe_allow_html=True)
     st.markdown(TYPING_BUBBLE, unsafe_allow_html=True)
-    response = run_crew(prompt, st.session_state.messages)
+    response, st.session_state.state = run_crew(prompt, st.session_state.messages, st.session_state.state)
+    response = str(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
 
@@ -277,6 +278,7 @@ if prompt := st.chat_input("Ask Kiri anything about your banking..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(user_bubble(prompt), unsafe_allow_html=True)
     st.markdown(TYPING_BUBBLE, unsafe_allow_html=True)
-    response = run_crew(prompt, st.session_state.messages)
+    response, st.session_state.state = run_crew(prompt, st.session_state.messages, st.session_state.state)
+    response = str(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
