@@ -17,22 +17,22 @@ st.markdown("""
 
     .asb-header {
         background-color: #FFCC00;
-        padding: 36px 48px;
+        padding: 10px 16px;
         display: flex;
         align-items: center;
-        gap: 28px;
+        gap: 16px;
         border-radius: 0 0 20px 20px;
-        margin-bottom: 40px;
+        margin-bottom: 20px;
         box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
     .asb-header-title {
-        font-size: 52px;
+        font-size: 28px;
         font-weight: 700;
         color: #000;
         margin: 0;
     }
     .asb-header-subtitle {
-        font-size: 32px;
+        font-size: 18px;
         color: #333;
         margin-top: 6px;
     }
@@ -40,26 +40,26 @@ st.markdown("""
         background-color: #000;
         color: #FFCC00;
         border-radius: 50%;
-        width: 100px;
-        height: 100px;
+        width: 64px;
+        height: 64px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 700;
-        font-size: 38px;
+        font-size: 22px;
         flex-shrink: 0;
     }
     .asb-avatar-sm {
         background-color: #000;
         color: #FFCC00;
         border-radius: 50%;
-        width: 72px;
-        height: 72px;
+        width: 44px;
+        height: 44px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 700;
-        font-size: 24px;
+        font-size: 14px;
         flex-shrink: 0;
         margin-top: 4px;
     }
@@ -76,8 +76,8 @@ st.markdown("""
         border: 1px solid #86efac;
         color: #166534;
         border-radius: 20px;
-        padding: 10px 22px;
-        font-size: 26px;
+        padding: 6px 14px;
+        font-size: 15px;
         white-space: nowrap;
         font-weight: 500;
     }
@@ -85,31 +85,31 @@ st.markdown("""
     .bubble-row-user {
         display: flex;
         justify-content: flex-end;
-        margin: 20px 0;
+        margin: 10px 0;
     }
     .bubble-row-assistant {
         display: flex;
         justify-content: flex-start;
         align-items: flex-start;
-        gap: 20px;
-        margin: 20px 0;
+        gap: 12px;
+        margin: 10px 0;
     }
     .user-bubble {
         background-color: #1a1a1a;
         color: white;
-        padding: 24px 34px;
-        border-radius: 32px 32px 4px 32px;
+        padding: 14px 20px;
+        border-radius: 18px 32px 4px 32px;
         max-width: 72%;
-        font-size: 32px;
+        font-size: 18px;
         line-height: 1.75;
     }
     .assistant-bubble {
         background-color: white;
         color: #1a1a1a;
-        padding: 24px 34px;
-        border-radius: 32px 32px 32px 4px;
+        padding: 14px 20px;
+        border-radius: 18px 32px 32px 4px;
         max-width: 72%;
-        font-size: 32px;
+        font-size: 18px;
         line-height: 1.75;
         border: 1px solid #ddd;
         box-shadow: 0 2px 8px rgba(0,0,0,0.07);
@@ -120,11 +120,11 @@ st.markdown("""
     .assistant-bubble ul,
     .assistant-bubble strong,
     .assistant-bubble a {
-        font-size: 32px !important;
+        font-size: 18px !important;
         line-height: 1.75 !important;
     }
     .bubble-name {
-        font-size: 24px;
+        font-size: 14px;
         color: #999;
         margin-bottom: 8px;
         font-weight: 500;
@@ -136,10 +136,10 @@ st.markdown("""
     .stButton > button {
         background-color: white !important;
         border: 2.5px solid #FFCC00 !important;
-        border-radius: 32px !important;
+        border-radius: 18px !important;
         color: #1a1a1a !important;
-        font-size: 26px !important;
-        padding: 20px 28px !important;
+        font-size: 15px !important;
+        padding: 10px 16px !important;
         font-weight: 500 !important;
         transition: background-color 0.2s;
         width: 100%;
@@ -150,12 +150,12 @@ st.markdown("""
 
     [data-testid="stChatInput"] textarea {
         caret-color: #1a1a1a !important;
-        font-size: 30px !important;
-        border-radius: 36px !important;
-        padding: 24px 32px !important;
+        font-size: 17px !important;
+        border-radius: 22px !important;
+        padding: 12px 18px !important;
         background-color: white !important;
         color: #1a1a1a !important;
-        min-height: 80px !important;
+        min-height: 48px !important;
     }
     [data-testid="stBottom"] {
         background-color: #e8e8e8 !important;
