@@ -1,4 +1,5 @@
 import os
+import json
 from openai import OpenAI
 from pinecone import Pinecone
 from dotenv import load_dotenv
@@ -38,17 +39,47 @@ def search(query: str, top_k: int = 5) -> list:
                 "answer": m.metadata["answer"],
                 "score": m.score,
             })
-    return filtered
+    return filtered[:3]
 
 
-def rewrite_query(user_message: str) -> str:
+def detect_intent(user_message: str) -> dict:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=0,
         messages=[
             {
                 "role": "system",
-                "content": "Rewrite the user's question into a clear and specific banking search query. Output only the rewritten query, nothing else."
+                "content": """You are an intent classifier for an ASB bank support chatbot.
+Return JSON ONLY with this format:
+{
+  "topic": "brief description of what the user wants",
+  "needs_clarification": true or false
+}
+Rules:
+- needs_clarification = true only if the request is genuinely ambiguous and more info is needed
+- needs_clarification = false if the intent is clear enough to search for an answer
+- topic should be a short, specific description like "reset password", "get account statement", "apply for credit card"
+"""
+            },
+            {"role": "user", "content": user_message}
+        ]
+    )
+    try:
+        return json.loads(response.choices[0].message.content)
+    except Exception:
+        return {"topic": user_message, "needs_clarification": False}
+
+
+def rewrite_query(user_message: str) -> str:
+    if len(user_message.split()) <= 3:
+        return user_message
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {
+                "role": "system",
+                "content": "Rewrite the user's question into a clear and specific banking search query. Output only the query, nothing else."
             },
             {"role": "user", "content": user_message}
         ]
@@ -56,32 +87,11 @@ def rewrite_query(user_message: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-def update_state(user_message: str, state: dict) -> dict:
-    msg = user_message.lower()
-    if "card" in msg:
-        state["topic"] = "card"
-    elif "limit" in msg or "payment" in msg:
-        state["topic"] = "payment"
-    elif "loan" in msg or "mortgage" in msg:
-        state["topic"] = "loan"
-    elif "password" in msg or "login" in msg:
-        state["topic"] = "access"
-    if "personal" in msg:
-        state["card_type"] = "personal"
-    elif "business" in msg:
-        state["card_type"] = "business"
-    elif "credit" in msg:
-        state["card_type"] = "credit"
-    elif "debit" in msg:
-        state["card_type"] = "debit"
-    return state
-
-
 def classify(message: str) -> str:
     msg = message.lower()
     if any(x in msg for x in ["human", "person", "call", "speak", "real", "someone", "agent"]):
         return "escalate"
-    if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen", "problem", "can't", "unable"]):
+    if any(x in msg for x in ["error", "not working", "failed", "problem", "can't", "unable", "missing", "gone", "blocked", "fraud", "stolen"]):
         return "complaint"
     return "faq"
 
@@ -90,10 +100,14 @@ def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
     if state is None:
         state = {}
 
-    state = update_state(user_message, state)
+    try:
+        intent = detect_intent(user_message)
+        state["topic"] = intent.get("topic", "")
+    except Exception:
+        intent = {"needs_clarification": False}
 
-    if state.get("topic") == "card" and "card_type" not in state:
-        return "Hey! Just to make sure I give you the right info — are you looking at a personal card, business card, credit card, or debit card?", state
+    if intent.get("needs_clarification"):
+        return "Could you tell me a bit more? I want to make sure I give you the right answer.", state
 
     category = classify(user_message)
 
@@ -127,8 +141,10 @@ def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
                 "- Do NOT include any URLs or links\n"
                 "- Do NOT sign off with your name — this is chat not email\n"
                 "- Never use corporate filler like 'Certainly!', 'I hope this helps'\n"
-                "- ONLY use the knowledge provided below — do not make things up\n"
-                "- If the knowledge base doesn't have the answer, say so honestly\n"
+                "- Use the knowledge below as your primary source\n"
+                "- You may use general banking knowledge if needed\n"
+                "- Do NOT invent specific ASB policies\n"
+                "- If unsure, say so honestly and suggest contacting ASB\n"
                 "- Ask for clarification if the question is still unclear\n\n"
                 f"Knowledge:\n{context}"
             )
@@ -140,7 +156,7 @@ def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
             if msg["role"] in ["user", "assistant"]:
                 messages.append({
                     "role": msg["role"],
-                    "content": msg["content"]
+                    "content": str(msg["content"])
                 })
 
     messages.append({"role": "user", "content": user_message})
