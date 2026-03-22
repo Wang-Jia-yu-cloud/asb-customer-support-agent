@@ -1,5 +1,4 @@
 import os
-import re
 from openai import OpenAI
 from pinecone import Pinecone
 from dotenv import load_dotenv
@@ -31,13 +30,15 @@ def get_embedding(text: str) -> tuple:
 def search(query: str, top_k: int = 5) -> list:
     vector = list(get_embedding(query))
     results = index.query(vector=vector, top_k=top_k, include_metadata=True)
-    return [
-        {
-            "question": m.metadata["question"],
-            "answer": m.metadata["answer"],
-        }
-        for m in results.matches
-    ]
+    filtered = []
+    for m in results.matches:
+        if m.score > 0.75:
+            filtered.append({
+                "question": m.metadata["question"],
+                "answer": m.metadata["answer"],
+                "score": m.score,
+            })
+    return filtered
 
 
 def rewrite_query(user_message: str) -> str:
@@ -49,48 +50,69 @@ def rewrite_query(user_message: str) -> str:
                 "role": "system",
                 "content": "Rewrite the user's question into a clear and specific banking search query. Output only the rewritten query, nothing else."
             },
-            {
-                "role": "user",
-                "content": user_message
-            }
+            {"role": "user", "content": user_message}
         ]
     )
     return response.choices[0].message.content.strip()
 
 
+def update_state(user_message: str, state: dict) -> dict:
+    msg = user_message.lower()
+    if "card" in msg:
+        state["topic"] = "card"
+    elif "limit" in msg or "payment" in msg:
+        state["topic"] = "payment"
+    elif "loan" in msg or "mortgage" in msg:
+        state["topic"] = "loan"
+    elif "password" in msg or "login" in msg:
+        state["topic"] = "access"
+    if "personal" in msg:
+        state["card_type"] = "personal"
+    elif "business" in msg:
+        state["card_type"] = "business"
+    elif "credit" in msg:
+        state["card_type"] = "credit"
+    elif "debit" in msg:
+        state["card_type"] = "debit"
+    return state
+
+
 def classify(message: str) -> str:
     msg = message.lower()
-    if any(x in msg for x in ["human", "person", "call", "speak", "real", "someone"]):
+    if any(x in msg for x in ["human", "person", "call", "speak", "real", "someone", "agent"]):
         return "escalate"
-    if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen"]):
+    if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen", "problem", "can't", "unable"]):
         return "complaint"
-    if any(x in msg for x in ["loan", "credit", "kiwisaver", "mortgage", "insurance"]):
-        return "product"
     return "faq"
 
 
-def run_crew(user_message: str, chat_history=None) -> str:
-    improved_query = rewrite_query(user_message)
+def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
+    if state is None:
+        state = {}
 
-    docs = search(improved_query, top_k=5)
+    state = update_state(user_message, state)
+
+    if state.get("topic") == "card" and "card_type" not in state:
+        return "Hey! Just to make sure I give you the right info — are you looking at a personal card, business card, credit card, or debit card?", state
+
+    category = classify(user_message)
+
+    if category in ["complaint", "escalate"]:
+        reply = (
+            "Hi there! Let me get you connected with the right help.\n\n"
+            "You can reach ASB directly:\n"
+            f"{ASB_CONTACT}"
+        )
+        return reply, state
+
+    query = rewrite_query(user_message)
+    docs = search(query, top_k=5)
 
     if docs:
         best = docs[0]
         context = f"Q: {best['question']}\nA: {best['answer']}"
     else:
-        context = "No relevant information found."
-
-    category = classify(user_message)
-
-    if category in ["complaint", "escalate"]:
-        return (
-            "Hi there! I can see something's not quite right.\n\n"
-            "Here's what you can try:\n"
-            "1. Check your internet banking or mobile app\n"
-            "2. Restart the app and try again\n\n"
-            "If the issue continues, contact ASB directly:\n"
-            f"{ASB_CONTACT}"
-        )
+        context = "No relevant information found in the knowledge base."
 
     messages = [
         {
@@ -106,7 +128,8 @@ def run_crew(user_message: str, chat_history=None) -> str:
                 "- Do NOT sign off with your name — this is chat not email\n"
                 "- Never use corporate filler like 'Certainly!', 'I hope this helps'\n"
                 "- ONLY use the knowledge provided below — do not make things up\n"
-                "- If unsure, say so honestly and suggest contacting ASB directly\n\n"
+                "- If the knowledge base doesn't have the answer, say so honestly\n"
+                "- Ask for clarification if the question is still unclear\n\n"
                 f"Knowledge:\n{context}"
             )
         }
@@ -129,4 +152,4 @@ def run_crew(user_message: str, chat_history=None) -> str:
         max_tokens=600,
     )
 
-    return response.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip(), state

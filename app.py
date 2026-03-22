@@ -199,6 +199,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pending" not in st.session_state:
     st.session_state.pending = None
+if "state" not in st.session_state:
+    st.session_state.state = {}
 
 
 def render_messages():
