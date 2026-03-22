@@ -123,8 +123,11 @@ def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
     docs = search(query, top_k=5)
 
     if docs:
-        best = docs[0]
-        context = f"Q: {best['question']}\nA: {best['answer']}"
+        all_context = "\n\n".join([
+            f"Q: {d['question']}\nA: {d['answer']}"
+            for d in docs
+        ])
+        context = all_context
     else:
         context = "No relevant information found in the knowledge base."
 
