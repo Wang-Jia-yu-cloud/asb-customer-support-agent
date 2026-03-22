@@ -24,21 +24,43 @@ Rules:
 - ALWAYS start with a brief natural greeting like "Hi there!" or "Hey!"
 - Talk like a real person: warm, direct, clear
 - Use contractions: you're, it's, here's, don't
-- When giving instructions for multiple methods, use headers like "**FastNet Classic:**" and "**ASB Mobile app:**" with numbered steps under each, starting from 1
+- When giving steps for multiple methods, use bold headers like "**FastNet Classic:**" and "**ASB Mobile app:**" with numbered steps under each starting from 1
 - Do NOT include any URLs or links
 - Do NOT sign off with your name
 - Never use "Certainly!", "I hope this helps"
 - Use ONLY the knowledge provided — do NOT invent ASB policies
-- If knowledge base has no answer, say so and suggest contacting ASB"""
+- If the knowledge base has no answer, say so and suggest contacting ASB
+- Focus on PERSONAL banking unless the user specifically mentions business"""
 
 AMBIGUOUS_TOPICS = {
-    "card": "Are you looking to apply for a credit card, debit card, or business card?",
-    "loan": "Are you asking about a home loan, personal loan, or business loan?",
-    "statement": "Are you after a transaction statement, credit card statement, or loan statement?",
-    "account": "Are you asking about a savings account, transaction account, or term deposit?",
-    "transfer": "Are you making a domestic transfer or an international money transfer?",
-    "alert": "Would you like email alerts, SMS alerts, or push notifications?",
-    "limit": "Are you asking about daily payment limits or credit card limits?",
+    "card": {
+        "question": "Are you looking to apply for a personal credit card, debit card, or a business card?",
+        "specifics": ["credit", "debit", "business", "visa", "personal"],
+    },
+    "loan": {
+        "question": "Are you asking about a home loan, personal loan, or business loan?",
+        "specifics": ["home", "personal", "business", "mortgage", "property"],
+    },
+    "statement": {
+        "question": "Are you after a transaction statement, credit card statement, or loan statement?",
+        "specifics": ["transaction", "credit card", "loan", "account", "bank"],
+    },
+    "account": {
+        "question": "Are you asking about a savings account, transaction account, or term deposit?",
+        "specifics": ["savings", "transaction", "term deposit", "cheque", "everyday"],
+    },
+    "transfer": {
+        "question": "Are you making a domestic transfer or an international money transfer?",
+        "specifics": ["international", "domestic", "overseas", "nz", "local"],
+    },
+    "alert": {
+        "question": "Would you like email alerts, SMS alerts, or push notifications?",
+        "specifics": ["email", "sms", "push", "notification", "text"],
+    },
+    "limit": {
+        "question": "Are you asking about daily payment limits or credit card limits?",
+        "specifics": ["daily", "credit card", "payment", "transaction"],
+    },
 }
 
 
@@ -67,42 +89,34 @@ def search(query: str, top_k: int = 5) -> list:
 
 def needs_clarification(user_message: str, chat_history: list) -> str | None:
     msg = user_message.lower()
-
     recent_context = " ".join([
         str(m.get("content", "")).lower()
-        for m in chat_history[-4:]
+        for m in chat_history[-6:]
         if m["role"] in ["user", "assistant"]
     ])
+    combined = msg + " " + recent_context
 
-    for keyword, question in AMBIGUOUS_TOPICS.items():
+    for keyword, config in AMBIGUOUS_TOPICS.items():
         if keyword in msg:
-            specifics = {
-                "card": ["credit", "debit", "business", "visa"],
-                "loan": ["home", "personal", "business", "mortgage"],
-                "statement": ["transaction", "credit card", "loan", "account"],
-                "account": ["savings", "transaction", "term deposit", "cheque"],
-                "transfer": ["international", "domestic", "overseas", "nz"],
-                "alert": ["email", "sms", "push", "notification", "text"],
-                "limit": ["daily", "credit card", "payment", "transaction"],
-            }
             already_specified = any(
-                word in msg or word in recent_context
-                for word in specifics.get(keyword, [])
+                word in combined
+                for word in config["specifics"]
             )
             if not already_specified:
-                return question
+                return config["question"]
     return None
 
 
 def build_search_query(user_message: str, chat_history: list) -> str:
-    if not chat_history:
+    recent_turns = []
+    for m in chat_history[-6:]:
+        if m["role"] in ["user", "assistant"] and m.get("content"):
+            recent_turns.append(f"{m['role'].upper()}: {str(m['content'])[:200]}")
+
+    if not recent_turns:
         return user_message
 
-    recent = "\n".join([
-        f"{m['role'].upper()}: {str(m['content'])[:200]}"
-        for m in chat_history[-4:]
-        if m["role"] in ["user", "assistant"]
-    ])
+    context = "\n".join(recent_turns)
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -111,15 +125,16 @@ def build_search_query(user_message: str, chat_history: list) -> str:
             {
                 "role": "system",
                 "content": (
-                    "Given a conversation history and the latest message, "
-                    "write a single clear search query for an ASB bank knowledge base. "
-                    "Capture the full intent including context. "
-                    "Output only the query."
+                    "You are building a search query for an ASB bank knowledge base. "
+                    "Given the conversation history and latest message, "
+                    "write ONE clear specific search query that captures the full intent. "
+                    "Include specific details like product type if mentioned. "
+                    "Output only the search query, nothing else."
                 )
             },
             {
                 "role": "user",
-                "content": f"History:\n{recent}\n\nLatest: {user_message}"
+                "content": f"Conversation:\n{context}\n\nLatest message: {user_message}"
             }
         ]
     )
@@ -128,7 +143,7 @@ def build_search_query(user_message: str, chat_history: list) -> str:
 
 def classify(message: str) -> str:
     msg = message.lower()
-    if any(x in msg for x in ["human", "real person", "speak to", "talk to someone", "call asb"]):
+    if any(x in msg for x in ["human", "real person", "speak to someone", "talk to someone", "call asb", "phone asb"]):
         return "escalate"
     if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen", "locked out"]):
         return "complaint"
