@@ -18,8 +18,23 @@ ASB_CONTACT = """
 - Online: asb.co.nz/contact-us
 """
 
+SYSTEM_PROMPT = """You are Kiri, a friendly senior customer support specialist at ASB Bank New Zealand.
 
-@lru_cache(maxsize=256)
+Rules:
+- ALWAYS start with a brief natural greeting like "Hi there!" or "Hey!"
+- Talk like a real person: warm, direct, clear
+- Use contractions: you're, it's, here's, don't
+- Number steps clearly when giving instructions
+- Do NOT include any URLs or links
+- Do NOT sign off with your name — this is chat, not email
+- Never use corporate filler like "Certainly!", "I hope this helps"
+- Use ONLY the knowledge provided below as your source
+- Do NOT invent specific ASB policies
+- If the knowledge base doesn't have the answer, say so honestly and suggest contacting ASB
+- If the user's message is a short follow-up (like "mail", "yes", "no"), use the conversation history to understand what they mean"""
+
+
+@lru_cache(maxsize=512)
 def get_embedding(text: str) -> tuple:
     response = client.embeddings.create(
         input=text,
@@ -31,57 +46,47 @@ def get_embedding(text: str) -> tuple:
 def search(query: str, top_k: int = 5) -> list:
     vector = list(get_embedding(query))
     results = index.query(vector=vector, top_k=top_k, include_metadata=True)
-    filtered = []
-    for m in results.matches:
-        if m.score > 0.75:
-            filtered.append({
-                "question": m.metadata["question"],
-                "answer": m.metadata["answer"],
-                "score": m.score,
-            })
-    return filtered[:3]
+    return [
+        {
+            "question": m.metadata["question"],
+            "answer": m.metadata["answer"],
+            "score": round(m.score, 3),
+        }
+        for m in results.matches
+        if m.score > 0.72
+    ]
 
 
-def detect_intent(user_message: str) -> dict:
+def build_search_query(user_message: str, chat_history: list) -> str:
+    if not chat_history or len(user_message.split()) > 5:
+        if len(user_message.split()) <= 3:
+            return user_message
+    
+    recent = ""
+    if chat_history:
+        recent = "\n".join([
+            f"{m['role'].upper()}: {str(m['content'])[:200]}"
+            for m in chat_history[-4:]
+            if m["role"] in ["user", "assistant"]
+        ])
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=0,
         messages=[
             {
                 "role": "system",
-                "content": """You are an intent classifier for an ASB bank support chatbot.
-Return JSON ONLY with this format:
-{
-  "topic": "brief description of what the user wants",
-  "needs_clarification": true or false
-}
-Rules:
-- needs_clarification = true only if the request is genuinely ambiguous and more info is needed
-- needs_clarification = false if the intent is clear enough to search for an answer
-- topic should be a short, specific description like "reset password", "get account statement", "apply for credit card"
-"""
+                "content": (
+                    "Given a conversation history and the latest user message, "
+                    "write a single clear search query for an ASB bank knowledge base. "
+                    "The query should capture the full intent including context from history. "
+                    "Output only the search query, nothing else."
+                )
             },
-            {"role": "user", "content": user_message}
-        ]
-    )
-    try:
-        return json.loads(response.choices[0].message.content)
-    except Exception:
-        return {"topic": user_message, "needs_clarification": False}
-
-
-def rewrite_query(user_message: str) -> str:
-    if len(user_message.split()) <= 3:
-        return user_message
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
             {
-                "role": "system",
-                "content": "Rewrite the user's question into a clear and specific banking search query. Output only the query, nothing else."
-            },
-            {"role": "user", "content": user_message}
+                "role": "user",
+                "content": f"History:\n{recent}\n\nLatest message: {user_message}"
+            }
         ]
     )
     return response.choices[0].message.content.strip()
@@ -89,9 +94,9 @@ def rewrite_query(user_message: str) -> str:
 
 def classify(message: str) -> str:
     msg = message.lower()
-    if any(x in msg for x in ["human", "person", "call", "speak", "real", "someone", "agent"]):
+    if any(x in msg for x in ["human", "person", "real person", "speak to", "talk to", "call me", "call asb"]):
         return "escalate"
-    if any(x in msg for x in ["error", "not working", "failed", "problem", "can't", "unable", "missing", "gone", "blocked", "fraud", "stolen"]):
+    if any(x in msg for x in ["not working", "failed", "error", "missing", "gone", "blocked", "fraud", "scam", "stolen", "can't login", "locked out"]):
         return "complaint"
     return "faq"
 
@@ -99,68 +104,56 @@ def classify(message: str) -> str:
 def run_crew(user_message: str, chat_history=None, state=None) -> tuple:
     if state is None:
         state = {}
-
-    try:
-        intent = detect_intent(user_message)
-        state["topic"] = intent.get("topic", "")
-    except Exception:
-        intent = {"needs_clarification": False}
-
-    if intent.get("needs_clarification"):
-        return "Could you tell me a bit more? I want to make sure I give you the right answer.", state
+    if chat_history is None:
+        chat_history = []
 
     category = classify(user_message)
 
-    if category in ["complaint", "escalate"]:
-        reply = (
-            "Hi there! Let me get you connected with the right help.\n\n"
-            "You can reach ASB directly:\n"
-            f"{ASB_CONTACT}"
+    if category == "escalate":
+        return (
+            "Hi there! No worries, let me get you connected with someone who can help.\n\n"
+            f"{ASB_CONTACT}",
+            state
         )
-        return reply, state
 
-    query = rewrite_query(user_message)
-    docs = search(query, top_k=5)
+    if category == "complaint":
+        docs = search(build_search_query(user_message, chat_history))
+        self_help = ""
+        if docs:
+            self_help = (
+                "\n\nIn the meantime, here's something that might help:\n"
+                f"{docs[0]['answer'][:300]}"
+            )
+        return (
+            f"Hi there! That doesn't sound right — let's get this sorted.{self_help}\n\n"
+            f"For urgent help, contact ASB directly:\n{ASB_CONTACT}",
+            state
+        )
+
+    query = build_search_query(user_message, chat_history)
+    docs = search(query)
 
     if docs:
-        all_context = "\n\n".join([
+        context = "\n\n---\n\n".join([
             f"Q: {d['question']}\nA: {d['answer']}"
             for d in docs
         ])
-        context = all_context
     else:
         context = "No relevant information found in the knowledge base."
 
     messages = [
         {
             "role": "system",
-            "content": (
-                "You are Kiri, a friendly senior customer support specialist at ASB Bank New Zealand.\n"
-                "Rules:\n"
-                "- ALWAYS start with a brief natural greeting like 'Hi there!' or 'Hey!'\n"
-                "- Talk like a real person: warm, direct, clear\n"
-                "- Use contractions: you're, it's, here's, don't\n"
-                "- Number steps clearly when giving instructions\n"
-                "- Do NOT include any URLs or links\n"
-                "- Do NOT sign off with your name — this is chat not email\n"
-                "- Never use corporate filler like 'Certainly!', 'I hope this helps'\n"
-                "- Use the knowledge below as your primary source\n"
-                "- You may use general banking knowledge if needed\n"
-                "- Do NOT invent specific ASB policies\n"
-                "- If unsure, say so honestly and suggest contacting ASB\n"
-                "- Ask for clarification if the question is still unclear\n\n"
-                f"Knowledge:\n{context}"
-            )
+            "content": f"{SYSTEM_PROMPT}\n\nKnowledge base results:\n{context}"
         }
     ]
 
-    if chat_history:
-        for msg in chat_history[-6:]:
-            if msg["role"] in ["user", "assistant"]:
-                messages.append({
-                    "role": msg["role"],
-                    "content": str(msg["content"])
-                })
+    for msg in chat_history[-6:]:
+        if msg["role"] in ["user", "assistant"] and msg.get("content"):
+            messages.append({
+                "role": msg["role"],
+                "content": str(msg["content"])[:500]
+            })
 
     messages.append({"role": "user", "content": user_message})
 
