@@ -212,7 +212,7 @@ def render_messages():
                 <div class="user-bubble">{msg["content"]}</div>
             </div>""", unsafe_allow_html=True)
         else:
-            raw = msg["content"] or ""
+            raw = str(msg["content"]) if msg["content"] is not None else ""
             html_content = markdown.markdown(raw) if raw.strip() else ""
             st.markdown(f"""
             <div class="bubble-row-assistant">
