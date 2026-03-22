@@ -214,14 +214,9 @@ def render_messages():
     import markdown
     import re
     def fix_fmt(text):
-        # Ensure blank line after bold header before numbered list
-        text = re.sub(r'(\*\*[^*]+\*\*:?)\n(\d+\.)', r'\1\n\n\2', text)
-        # Ensure blank line before bold header after numbered list
-        text = re.sub(r'(\d+\.[^\n]+)\n(\*\*)', r'\1\n\n\2', text)
-        # Ensure blank line after bold header before bullet list
-        text = re.sub(r'(\*\*[^*]+\*\*:?)\n(-)', r'\1\n\n\2', text)
-        # Ensure blank line before bold header after bullet list
-        text = re.sub(r'(-[^\n]+)\n(\*\*)', r'\1\n\n\2', text)
+        text = re.sub(r'(\*\*[^*]+\*\*:?)\n(?!\n)', r'\1\n\n', text)
+        text = re.sub(r'(?<!\n)\n(\*\*)', r'\n\n\1', text)
+        text = re.sub(r'([^\n])\n(\d+\.)', r'\1\n\n\2', text)
         return text
     for msg in st.session_state.messages:
         if msg["role"] == "user":
