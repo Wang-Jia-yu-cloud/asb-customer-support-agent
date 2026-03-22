@@ -5,6 +5,13 @@ from src.agent import run_crew
 
 load_dotenv()
 
+import re
+
+def fix_markdown_format(text: str) -> str:
+    text = re.sub(r'(\*\*[^*]+\*\*:?)\n(\d+\.)', r'\1\n\n\2', text)
+    text = re.sub(r'(\d+\.[^\n]+)\n(\*\*)', r'\1\n\n\2', text)
+    return text
+
 st.set_page_config(
     page_title="ASB Virtual Support",
     page_icon="🏦",
@@ -205,6 +212,11 @@ if "state" not in st.session_state:
 
 def render_messages():
     import markdown
+    import re
+    def fix_fmt(text):
+        text = re.sub(r'(\*\*[^*]+\*\*:?)\n(\d+\.)', r'\1\n\n\2', text)
+        text = re.sub(r'(\d+\.[^\n]+)\n(\*\*)', r'\1\n\n\2', text)
+        return text
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             st.markdown(f"""
@@ -213,7 +225,8 @@ def render_messages():
             </div>""", unsafe_allow_html=True)
         else:
             raw = str(msg["content"]) if msg["content"] is not None else ""
-            html_content = markdown.markdown(raw) if raw.strip() else ""
+            raw = fix_fmt(raw)
+            html_content = markdown.markdown(raw, extensions=["extra"]) if raw.strip() else ""
             st.markdown(f"""
             <div class="bubble-row-assistant">
                 <div class="asb-avatar-sm">KM</div>
