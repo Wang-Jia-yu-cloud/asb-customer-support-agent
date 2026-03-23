@@ -1,4 +1,4 @@
-readme = """# ASB Customer Support Agent
+# ASB Customer Support Agent
 
 An AI-powered customer support chatbot built with RAG (Retrieval-Augmented Generation), deployed on Streamlit Cloud.
 
