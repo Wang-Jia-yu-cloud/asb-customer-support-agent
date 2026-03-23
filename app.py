@@ -24,13 +24,14 @@ st.markdown("""
 
     .asb-header-wrapper {
         position: fixed;
-        top: 3rem;
-        left: 0;
-        right: 0;
+        top: 3.2rem;
+        left: 1rem;
+        right: 1rem;
         z-index: 999;
+        border-radius: 0 0 20px 20px;
     }
     .chat-body {
-        margin-top: 180px;
+        margin-top: 140px;
     }
     .asb-header {
         background-color: #FFCC00;
