@@ -22,6 +22,16 @@ st.markdown("""
 <style>
     .stApp { background-color: #e8e8e8; }
 
+    .asb-header-wrapper {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+    }
+    .chat-body {
+        margin-top: 120px;
+    }
     .asb-header {
         background-color: #FFCC00;
         padding: 10px 16px;
@@ -181,6 +191,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
+<div class="asb-header-wrapper">
 <div class="asb-header">
     <div class="asb-avatar">KM</div>
     <div style="flex:1">
@@ -193,7 +204,10 @@ st.markdown("""
     </div>
     <span class="secure-badge">🔒 Secure session</span>
 </div>
+</div>
 """, unsafe_allow_html=True)
+
+st.markdown('<div class="chat-body">', unsafe_allow_html=True)
 
 SUGGESTIONS = [
     "How do I reset my password?",
