@@ -23,6 +23,33 @@ st.markdown("""
     .stApp { background-color: #e8e8e8; }
     header[data-testid="stHeader"] { display: none; }
 
+    @media (max-width: 768px) {
+        .asb-header-title { font-size: 18px !important; }
+        .asb-header-subtitle { font-size: 13px !important; }
+        .asb-avatar { width: 44px !important; height: 44px !important; font-size: 16px !important; }
+        .secure-badge { font-size: 12px !important; padding: 4px 10px !important; }
+        .asb-header { padding: 12px 16px !important; gap: 12px !important; }
+        .chat-body { margin-top: 75px !important; }
+        .user-bubble { font-size: 15px !important; padding: 12px 16px !important; max-width: 85% !important; }
+        .assistant-bubble { font-size: 15px !important; padding: 12px 16px !important; max-width: 85% !important; }
+        .assistant-bubble p, .assistant-bubble li, .assistant-bubble ol,
+        .assistant-bubble ul, .assistant-bubble strong, .assistant-bubble a {
+            font-size: 15px !important;
+        }
+        .asb-avatar-sm { width: 36px !important; height: 36px !important; font-size: 13px !important; }
+        .bubble-name { font-size: 12px !important; }
+        div[data-testid="stButton"] button,
+        div[data-testid="stButton"] button p,
+        .stButton > button {
+            font-size: 14px !important;
+            padding: 10px 14px !important;
+        }
+        [data-testid="stChatInput"] textarea {
+            font-size: 15px !important;
+            padding: 12px 16px !important;
+        }
+    }
+
     .asb-header-wrapper {
         position: fixed;
         top: 0;
