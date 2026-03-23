@@ -21,6 +21,7 @@ st.set_page_config(
 st.markdown("""
 <style>
     .stApp { background-color: #e8e8e8; }
+    header[data-testid="stHeader"] { display: none; }
 
     .asb-header-wrapper {
         position: fixed;
